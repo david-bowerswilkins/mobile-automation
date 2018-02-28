@@ -2,7 +2,9 @@ from appium import webdriver
 from selenium.webdriver.common.by import By
 from selenium import webdriver as seleniumdriver
 import time
-import Core
+from . import Core
+import asyncio
+
 
 class Library:
 
@@ -12,23 +14,24 @@ class Library:
     def __init__(self):
         self.running = 1
 
-
     def start(self, descaps):
         #self.meshname = 'dterry'
         self.meshname = 'eva.mesh.default'
         self.os = descaps['platformName']
         self.spacenames = []
+        self.messages = False
+
+        self.loop = asyncio.get_event_loop()
+        self.loop.run_until_complete(self.readSerial())
 
         core.start(descaps)
 
     def finish(self):
         core.finish()
+        #self.loop.close()
 
     def getRandomOptions(self):
         return core.getRandomOptions()
-
-
-    ## iOS for now
 
     def shortWaiting(self):
         core.shortWaiting()
@@ -77,24 +80,56 @@ class Library:
             core.safeTapByID('X')
             core.safeTapByID('show space list')
             core.safeTapByID('Cancel')
+            core.safeTapByID('Done')
+            core.safeTapByID('Ignore')
             core.safeTapByClass('XCUIElementTypeButton')
             navBar = core.safeGetByClass('XCUIElementTypeNavigationBar')
-            if navBar.get_attribute('name') == 'My home':
-                core.silenceLog = False
-                core.logEvent('Done backing all the way out.')
-                break
-        core.longWaiting()
+            try:
+                if navBar.get_attribute('name') == 'My home':
+                    core.silenceLog = False
+                    core.logEvent('Done backing all the way out.')
+                    break
+            except:
+                return False
+        core.shortWaiting()
+        return True
 
     def goToOOBE(self):
         core.logEvent('Going to OOBE now through Settings.')
-        #core.safeTapByID('settings')
-        core.tapByNameAndClass('settings', 'XCUIElementTypeButton')
-        time.sleep(2)
-        core.tapByNameAndClass('settings', 'XCUIElementTypeButton')
-        time.sleep(2)
-        core.safeTapByID('Add device')
-        time.sleep(8)
+        timeLimit = 30
+        startTime = time.time()
+        core.silenceLog = True
+        success = False
 
+        while (time.time() < (timeLimit + startTime)):
+            if success:
+                break
+            if core.safeTapByID('settings'):
+                success = True
+                break
+            try:
+                els = core.safeGetAllByClass('XCUIElementTypeButton')
+                for el in els:
+                    if el.get_attribute('name') == 'settings':
+                        el.click()
+                        success = True
+                        break
+
+                    if el.get_attribute('label') == 'settings':
+                        el.click()
+                        success = True
+                        break
+            except:
+                core.silenceLog = True
+                core.logEvent('Could not hit the Settings button. Trying again.')
+                core.silenceLog = False
+
+        core.silenceLog = False
+        time.sleep(2)
+        if not self.scrollDownAndFind('Add device', 30):
+            return False
+        time.sleep(8)
+        return True
 
     def getAllDevices(self):
         for space in core.spacenames:
@@ -136,39 +171,66 @@ class Library:
             return True
         else:
             return False
-        
+
+    def checkIfAtDataOptIn(self):
+        core.silenceLog = True
+        el = core.safeGetByID('header_dataoptin')
+        if el.get_attribute('value') == 'Data Opt-in':
+            core.silenceLog = False
+            return True
+        if el.get_attribute('label') == 'Data Opt-in':
+            core.silenceLog = False
+            return True
+        core.silenceLog = False
+        return False
 
     def doOOBE(self, options):
         core.logOptions(options)
+        self.swapMessagesLogging(True)
 
-        self.goToOOBE()
+        if not self.goToOOBE():
+            return False
 
         if options['checkHelp']:
             self.checkOOBEHelp()
 
-        self.tapLibertyButton()
+        if not self.connectToLWM():
+            core.logEvent('LWM is being a piece of shit. It wont connect with us. Giving up!')
+            return False
 
-        if options['acceptEULA']:
-            self.acceptPage()
-        else:
-            self.rejectPage()
-            core.logEvent('EULA has been rejected, so OOBE flow is stopping here.')
-            return
+        while not self.checkIfOnWiFi():
 
-        if options['acceptData']:
-            self.acceptPage()
-            core.logEvent('Data agreement accepted.')
+            if self.checkIfAtEULA():
+                self.acceptPage()
+            if self.checkIfAtDataOptIn():
+                if options['acceptData']:
+                    self.acceptPage()
+                    core.logEvent('Data agreement accepted.')
+                else:
+                    self.rejectPage()
+                    core.logEvent('Data agreement rejected.')
+
+        if self.checkIfOnWiFi():
+            core.logEvent('We made it to WiFi Setup.')
         else:
-            self.rejectPage()
-            core.logEvent('Data agreement rejected.')
+            core.logEvent('We should be at WiFi Setup here. But we are not. Something has gone terribly wrong. Call the president.')
+            return False
 
         if options['useCurrentNetwork']:
             self.acceptPage()
             self.enterWiFiPassword(options['password'])
         else:
+            self.rejectPage()
             self.useOtherNetwork(options['ssid'], options['password'])
 
-        self.submitAndWaitForWiFi()
+        if not self.submitAndWaitForWiFi():
+            return False
+
+        if not core.findByID('header_space_assign'):
+            core.logEvent('We somehow did not make it to space assignment by now. Something has gone terribly wrong. Call the president.')
+            return False
+
+        core.logEvent('We are now at space naming.')
 
         if self.checkForDesiredSpace(options['spacename']):
             core.safeTapByID(options['spacename'])
@@ -176,9 +238,9 @@ class Library:
             self.useCustomSpace(options['spacename'])
 
         self.finishOOBE()
-        self.endTest('OOBE')
+        #self.endTest('OOBE')
 
-    ###
+        return True
 
     def endTest(self, name):
         if core.lastTestFailed:
@@ -189,21 +251,58 @@ class Library:
 
     def checkOOBEHelp(self):
         core.safeTapByID('speakers_missing')
-        time.sleep(2)
+        time.sleep(1)
         core.safeTapByID('Add Speakers')
+        time.sleep(1)
+
+    def checkIfOnWiFi(self):
+        core.silenceLog = True
+        el = core.safeGetByID('header_dataoptin')
+        try:
+            if el.get_attribute('value') == 'Would you like to use your current network?':
+                core.silenceLog = False
+                return True
+            if el.get_attribute('label') == 'Would you like to use your current network?':
+                core.silenceLog = False
+                return True
+        except:
+            one = 1
+        core.silenceLog = False
+        return False
+
+    def connectToLWM(self):
+        self.swapMessagesLogging(False)
+
+        timeLimit = 45
+        startTime = time.time()
+        success = False
+        forwardHeaders = ['header_dataoptin', 'header_eula']
+
+        while (time.time() < (timeLimit + startTime)):
+            core.logEvent('Tapping Liberty button now.')
+            core.usbSerial.write('oobectl liberty\n'.encode('utf-8'))
+            time.sleep(8)
+
+            if core.findByID('header_pressbutton', True):
+                core.logEvent('We have not connected to LWM yet. Trying to tap again.')
+                core.usbSerial.write('\x03')
+                time.sleep(2)
+                continue
+
+            if self.checkIfAtAny(forwardHeaders):
+                core.logEvent('Successfully connected to LWM!')
+                success = True
+                break
+
         time.sleep(2)
+        self.swapMessagesLogging(True)
+        return success
 
-    def tapLibertyButton(self):
-        core.logEvent('Tapping Liberty button now.')
-        core.usbSerial.write('oobectl\n\r'.encode('utf-8'))
-        time.sleep(8)
-        if self.checkIfAtEULA():
-            core.logEvent('Paired. We made it to EULA.')
-        else:
-            core.logEvent('We have not made it to EULA for some reason.')
-        core.logEvent('Breaking out of oobectl now.')
-        core.usbSerial.write('\x03')
-
+    def checkIfAtAny(self, IDs):
+        for ID in IDs:
+            if core.findByID(ID):
+                return True
+        return False
 
     def acceptPage(self):
         core.safeTapByID('accept')
@@ -215,54 +314,63 @@ class Library:
 
     def enterWiFiPassword(self, password):
         field = core.safeGetByClass('XCUIElementTypeSecureTextField')
-        field.click()
+        try:
+            field.click()
+        except:
+            return False
         field.send_keys(password)
         time.sleep(2)
 
     def submitAndWaitForWiFi(self):
         core.safeTapByID('Return')
+        time.sleep (2)
+        if core.findByID('header_connecting'):
+            core.logEvent('Connecting to WiFi right now. Giving it some time.')
         time.sleep(20)
         ## Are we there yet?
         try:
             core.driver.find_element_by_accessibility_id('header_space_assign')
         except:
             core.logEvent('! Having trouble connecting to WiFi !')
+            return False
+        return True
 
     def useOtherNetwork(self, ssid, password):
-        core.safeTapByID('reject')
         ## We need to catch SSIDs never showing up here
         time.sleep(10)
 
         if not self.findSSID(ssid):
             core.lastTestFailed = True
-            self.endTest('OOBE')
+            #self.endTest('OOBE')
             return
 
         time.sleep(2)
         field = core.safeGetByClass('XCUIElementTypeSecureTextField')
-        core.safeClick(field)
+        if not core.safeClick(field):
+            return False
         field.send_keys(password)
         time.sleep(2)
 
     def findSSID(self, ssid):
         core.veryShortWaiting()
-        # Milisecond time limit
-        timeLimit = 20000
+
+        timeLimit = 45  # Time to try in seconds
+
         startTime = time.time()
-        endTime = 0
         core.silenceLog = True
+        success = False
 
         while (time.time() < (timeLimit + startTime)):
 
-            core.shortSwipeDown()
             if core.safeTapByID(ssid):
+                success = True
                 break
-            endTime = time.time()
+            core.shortSwipeDown()
 
         core.silenceLog = False
-        core.longWaiting()
-        if endTime > (timeLimit + startTime):
-            core.logEvent("!!! We could never find the SSID.")
+        core.shortWaiting()
+        if not success:
+            core.logEvent("!!! We could never find the SSID !!!")
             return False
 
         return True
@@ -279,7 +387,10 @@ class Library:
         core.safeTapByID('custom')
         time.sleep(2)
         field = core.safeGetByClass('XCUIElementTypeTextField')
-        field.click()
+        try:
+            field.click()
+        except:
+            return False
         # Let the keyboard come up
         time.sleep(3)
         field.send_keys(spacename)
@@ -287,26 +398,110 @@ class Library:
         core.safeTapByID('Next:')
         time.sleep(2)
 
+    def checkFailureReason(self):
+        if core.findByID('Ignore', True):
+            core.failureReason = 'Test failed because of a native iOS modal alert.'
+            return True
+
+
     def finishOOBE(self):
         try:
             core.driver.find_element_by_accessibility_id('header_done')
         except:
             core.logEvent('! We could not finish OOBE for some reason !')
+            return False
         core.safeTapByID('accept')
         core.logEvent('OOBE WAS COMPLETED!\n')
-        time.sleep(2)
+        time.sleep(1)
+        return True
 
     def wipeAndReboot(self):
+        self.swapMessagesLogging(False)
+
+        core.usbSerial.write('\x03')
         core.logEvent('Wiping and rebooting the device now.')
-        core.usbSerial.write('rm -r /var/appdata/*\n\r'.encode('utf-8'))
-        core.usbSerial.write('reboot\n\r'.encode('utf-8'))
+        core.usbSerial.write('\nrm -r /var/appdata/*\n'.encode('utf-8'))
+        core.usbSerial.write('\nreboot\n'.encode('utf-8'))
+
         self.backAllTheWayOut()
         core.tapByNameAndClass('settings', 'XCUIElementTypeButton')
         time.sleep(2)
-        core.logEvent('Resetting Global Mesh Settings now.')
-        core.safeTapByID('Reset Global Mesh Settings')
+
+        self.wipeGlobalMeshSettings()
         time.sleep(1)
+
         core.safeTapByID('Done')
         time.sleep(1)
+
         self.backAllTheWayOut()
-        time.sleep(45)
+        start = time.time()
+
+        # Sleep and keep Appium alive for 60 seconds
+        core.veryShortWaiting()
+        while time.time() < start + 40:
+            if time.time() % 10 == 0:
+                core.findByID('complete bullshit', True)
+                core.logEvent('Keeping Appium alive through reboot.')
+        core.logEvent('Done keeping alive.')
+
+        core.shortWaiting()
+        self.swapMessagesLogging(True)
+
+
+    def wipeGlobalMeshSettings(self):
+        core.logEvent('Resetting Global Mesh Settings now.')
+        success = False
+        #core.silenceLog = True
+        startTime = time.time()
+        timeLimit = 25
+        core.veryShortWaiting()
+        while (time.time() < (timeLimit + startTime)):
+            core.shortSwipeDown()
+            if core.safeTapByID('Reset Global Mesh Settings'):
+                success = True
+                break
+        core.shortWaiting()
+        #core.silenceLog = False
+        #if not success:
+            #core.logEvent('We could not find the Reset Global Mesh Settings button.')
+        return success
+
+    def scrollDownAndFind(self, ID, limit):
+        success = False
+        startTime = time.time()
+        timeLimit = limit
+        core.veryShortWaiting()
+        while (time.time() < (timeLimit + startTime)):
+            if core.safeTapByID(ID):
+                success = True
+                break
+            core.shortSwipeDown()
+        core.shortWaiting()
+        return success
+
+    def reportOOBEFailure(self):
+        core.handleFailure()
+        core.logEvent('!!!OOBE TEST FAILED!!!')
+        core.reportResults('OOBE', 'FAILED')
+
+    def reportOOBESuccess(self):
+        core.logEvent('OOBE TEST SUCCEEDED!')
+        core.reportResults('OOBE', 'SUCCEEDED')
+
+    def swapMessagesLogging(self, enabled):
+        if enabled == True:
+            self.messages = True
+            core.usbSerial.write('\x03')
+            core.usbSerial.write('\ntail -f /var/log/messages\n'.encode('utf-8'))
+            time.sleep(1)
+        if enabled == False:
+            self.messages = False
+            core.usbSerial.write('\x03')
+            core.usbSerial.write('\x03')
+            time.sleep(1)
+
+
+    def readSerial(self):
+        while True:
+            if self.messages:
+                core.readSerial()

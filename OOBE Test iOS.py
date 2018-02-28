@@ -2,9 +2,9 @@ from appium import webdriver
 from selenium.webdriver.common.by import By
 from selenium import webdriver as seleniumdriver
 import time
-import ActionsLibrary
 import random
 
+from Liberty import ActionsLibrary
 
 if __name__ == '__main__':
     descaps = {
@@ -22,13 +22,20 @@ if __name__ == '__main__':
 
     lib.start(descaps)
 
-    lib.longWaiting()
+    lib.shortWaiting()
 
-    for x in xrange(3):
+    while True:
         options = lib.getRandomOptions()
         options['acceptEULA'] = True
-        lib.doOOBE(options)
+
+        if not lib.doOOBE(options):
+            lib.checkFailureReason()
+            lib.reportOOBEFailure()
+        else:
+            lib.reportOOBESuccess()
+
         lib.wipeAndReboot()
+
 
     lib.finish()
 

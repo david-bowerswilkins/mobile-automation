@@ -10,12 +10,15 @@ class Logger:
         self.running = 1
 
     def start(self):
-        self.fileName = "Appium Log %s.txt" % self.getFilesafeTime()
-        self.summaryName = "Test Summary %s.txt" %self.getFilesafeTime()
+        self.fileName = "/Users/david/Automation/Results/onelog.txt"
+        #self.fileName = "/Users/david/Automation/Results/Appium Log %s.txt" % self.getFilesafeTime()
+        self.summaryName = "/Users/david/Automation/Results/Test Summary %s.txt" % self.getFilesafeTime()
+        self.outputName = "/Users/david/Automation/Results/lwmOutput.txt"
         new = open(self.fileName, "w")
         newSum = open(self.summaryName, "w")
+        newOut = open(self.outputName, "w")
         new.write("Appium Logging is beginning now at:\n%s" % self.getTime())
-        newSum.write("Test Summary for tests at:\n%s" % self.getTime())
+        newSum.write("Test Summary for tests at:\n%s\n\n" % self.getTime())
         new.close()
         newSum.close()
 
@@ -24,11 +27,14 @@ class Logger:
 
         self.f = open(self.fileName, "a")
         self.s = open(self.summaryName, "a")
+        self.o = open(self.outputName, "a")
+
+        self.f.flush()
+        self.s.flush()
 
     def finish(self):
         shutil.move(self.fileName, "/Users/david/Automation/Results/%s" % self.fileName)
         shutil.move(self.summaryName, "/Users/david/Automation/Results/%s" % self.summaryName)
-
 
     def getTime(self):
         t = time.strftime("%m/%d %H:%M:%S", time.localtime())
@@ -43,15 +49,24 @@ class Logger:
         print(message)
         self.f.write(message)
         self.lineCount = self.lineCount + 1
+        self.f.flush()
 
-    def reportResults(self, testName, result):
-        summary = '\n%s TEST %s at %s\n' % (testName, result, self.getTime())
+    def addOutput(self, line):
+        self.o.write(line)
+        self.o.flush()
+
+    def reportResults(self, testName, result, reason):
+        summary = '%s TEST %s at %s' % (testName, result, self.getTime())
         self.s.write(summary)
 
-        if result == 'FAILED':
-            self.s.write('\n!!! See log at line %d' % self.failureLine)
+        if reason != '':
+            self.s.write('\n' + reason)
 
-        self.s.write('\n')
+        if result == 'FAILED':
+            self.s.write('\nSee log at line %d' % self.failureLine)
+
+        self.s.write('\n\n')
+        self.s.flush()
 
     def markLine(self):
         self.failureLine = self.lineCount

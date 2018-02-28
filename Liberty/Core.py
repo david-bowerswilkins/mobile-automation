@@ -3,8 +3,9 @@ from selenium.webdriver.common.by import By
 from selenium import webdriver as seleniumdriver
 import time
 import serial
-import Logger as logger
+from . import Logger as logger
 import random
+
 
 
 class Core:
@@ -13,6 +14,7 @@ class Core:
         self.running = 1
 
     def start(self, descaps):
+        self.serOK = False
         self.driver = webdriver.Remote(command_executor='http://localhost:4723/wd/hub', desired_capabilities=descaps)
         self.spacenames = []
         self.deviceLists = []
@@ -21,12 +23,14 @@ class Core:
         self.log = logger.Logger()
         self.log.start()
         self.openSerial()
+        self.serOK = True
+        self.failureReason = ''
+
 
     def finish(self):
         self.log.finish()
 
     def openSerial(self):
-        self.logEvent('Opening serial now.')
         self.usbSerial = serial.Serial(port='/dev/tty.SLAB_USBtoUART', baudrate='115200', timeout=15)
         self.logEvent('Serial open? ' + str(self.usbSerial.is_open))
 
@@ -84,10 +88,10 @@ class Core:
 
     def longSwipeDown(self):
         self.driver.swipe(60, 550, 0, -300, duration=1000)
-        time.sleep(5)
+        time.sleep(1)
 
     def shortSwipeDown(self):
-        self.driver.swipe(60, 550, 0, -50, duration=2000)
+        self.driver.swipe(80, 550, 0, -200, duration=1000)
         time.sleep(1)
 
     def dragElementDown(self, el):
@@ -96,7 +100,7 @@ class Core:
 
     def safeTapByID(self, id):
         try:
-            time.sleep(1)
+            #time.sleep(1)
             el = self.driver.find_element_by_accessibility_id(id)
             el.click()
             return True
@@ -124,6 +128,7 @@ class Core:
         except:
             self.logEvent(str("We could not get the " + name + " element by class name."))
             self.handleFailure()
+            return False
 
     def safeGetByID(self, name):
         try:
@@ -190,15 +195,14 @@ class Core:
 
     def safeClick(self, el):
         try:
-            time.sleep(1)
             el.click()
             return el
         except:
             try:
                 self.logEvent(str("We could not safeclick the " + el.get_attribute('type') + " element"))
+                return False
             except:
-                self.logEvent('logEvent failed.')
-            self.handleFailure()
+                return False
 
     def tapByNameAndClass(self, name, type):
         try:
@@ -227,30 +231,39 @@ class Core:
             self.handleFailure()
             return False
 
-    def findByID(self, id):
+    def findByID(self, id, silent = False):
         try:
             time.sleep(1)
             if self.driver.find_element_by_accessibility_id(id):
                 return True
         except:
-            self.logEvent(str("We could not find element with ID: " + id + "."))
-            self.handleFailure()
+            if not silent:
+                self.logEvent(str("We could not find element by ID: " + id + "."))
             return False
 
     def logEvent(self, string):
+        #if self.serOK:
+            #self.readSomeLoop()
         if not self.silenceLog:
             self.log.addLine(string, 3)
 
+    def readSomeLoop(self):
+        start = time.time()
+        while time.time() < start + 1:
+            self.readSerial()
+
     def reportResults(self, testName, result):
-        self.log.reportResults(testName, result)
+        self.log.reportResults(testName, result, self.failureReason)
+        self.failureReason = ''
 
     def handleFailure(self):
         if not self.silenceLog:
             self.lastTestFailed = True
             self.log.markLine()
 
-    def markLine(self):
-        self.log.markLine()
-
     def logOptions(self, options):
         self.log.logOptions(options)
+
+    def readSerial(self):
+        line = self.usbSerial.readline()
+        self.log.addOutput(line)

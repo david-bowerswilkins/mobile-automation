@@ -20,6 +20,9 @@ if __name__ == '__main__':
     logFile.write('Serial open? ' + str(usbSerial.is_open))
     logFile.flush()
 
+    # The error string to find
+    toFind = 'connection failed; next connection attempt in 3s ;connecting to service:'
+
     forever = True
     failCount = 0
     iterationTotal = 1
@@ -40,13 +43,10 @@ if __name__ == '__main__':
             time.sleep(45)
             usbSerial.write('tail -f /var/log/messages\n\r'.encode('utf-8'))
 
-            timeLimit = 25
+            timeLimit = 25  # Max time to look for the issue after reboot.
             startTime = time.time()
 
             while (time.time() < (timeLimit + startTime)):
-
-                # The error string to find
-                toFind = 'connection failed; next connection attempt in 3s ;connecting to service:'
 
                 line = usbSerial.readline()
                 logFile.write(line)
