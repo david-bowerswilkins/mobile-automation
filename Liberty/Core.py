@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium import webdriver as seleniumdriver
 import time
 import serial
-import Logger as logger
+from . import Logger as logger
 import random
 
 

@@ -1,8 +1,12 @@
 from appium import webdriver
-from selenium.webdriver.common.by import By
-from selenium import webdriver as seleniumdriver
 import time
-import ActionsLibrary
+
+
+import importlib.util
+spec = importlib.util.spec_from_file_location("ActionsLibrary", "/Users/david/Automation/mobile-automation/Liberty/ActionsLibrary.py")
+foo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(foo)
+
 import random
 
 
@@ -24,7 +28,7 @@ if __name__ == '__main__':
 
     lib.longWaiting()
 
-    for x in xrange(3):
+    for x in range(3):
         options = lib.getRandomOptions()
         options['acceptEULA'] = True
         lib.doOOBE(options)

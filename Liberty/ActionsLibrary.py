@@ -1,8 +1,6 @@
 from appium import webdriver
-from selenium.webdriver.common.by import By
-from selenium import webdriver as seleniumdriver
 import time
-import Core
+from . import Core
 
 class Library:
 
@@ -11,7 +9,6 @@ class Library:
 
     def __init__(self):
         self.running = 1
-
 
     def start(self, descaps):
         #self.meshname = 'dterry'
