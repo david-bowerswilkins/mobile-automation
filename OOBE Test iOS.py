@@ -1,11 +1,8 @@
 from appium import webdriver
 import time
 
+from Liberty import ActionsLibrary
 
-import importlib.util
-spec = importlib.util.spec_from_file_location("ActionsLibrary", "/Users/david/Automation/mobile-automation/Liberty/ActionsLibrary.py")
-foo = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(foo)
 
 import random
 
