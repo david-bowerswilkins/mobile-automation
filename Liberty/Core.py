@@ -66,6 +66,10 @@ class Core:
 
         return options
 
+    def noWaiting(self):
+        self.driver.implicitly_wait(0)
+        self.logEvent('Going to NO waiting.')
+
     def shortWaiting(self):
         self.driver.implicitly_wait(3)
         self.logEvent('Going to short waiting.')
@@ -242,14 +246,14 @@ class Core:
             return False
 
     def logEvent(self, string):
-        #if self.serOK:
-            #self.readSomeLoop()
+        if self.serOK:
+            self.readSomeLoop()
         if not self.silenceLog:
             self.log.addLine(string, 3)
 
     def readSomeLoop(self):
         start = time.time()
-        while time.time() < start + 1:
+        while time.time() < (start + 0.3):
             self.readSerial()
 
     def reportResults(self, testName, result):
@@ -265,5 +269,9 @@ class Core:
         self.log.logOptions(options)
 
     def readSerial(self):
-        line = self.usbSerial.readline()
-        self.log.addOutput(line)
+        try:
+            line = self.usbSerial.readline()
+            newStr = line.decode('utf-8')
+            self.log.addOutput(str(newStr))
+        except:
+            self.logEvent('One line of output had some invalid UTF-8. Why? He screams, for he does not know.')

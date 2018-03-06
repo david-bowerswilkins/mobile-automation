@@ -21,8 +21,8 @@ class Library:
         self.spacenames = []
         self.messages = False
 
-        self.loop = asyncio.get_event_loop()
-        self.loop.run_until_complete(self.readSerial())
+        #loop = asyncio.get_event_loop()
+        #loop.run_until_complete(self.readSerial(loop))
 
         core.start(descaps)
 
@@ -74,25 +74,45 @@ class Library:
         core.safeTapByID(core.spacenames[0])
 
     def backAllTheWayOut(self):
-        core.silenceLog = True
+        core.logEvent('Backing all the way out now.')
+        core.silenceLog = False
         core.veryShortWaiting()
-        while True:
+        limit = 120
+        start = time.time()
+        success = False
+
+        while time.time() < (start + limit):
+            # if core.safeTapByID('X'):
+            #     continue
+            # if core.safeTapByID('show space list'):
+            #     continue
+            # if core.safeTapByID('Cancel'):
+            #     continue
+            # if core.safeTapByID('Done'):
+            #     continue
+            # if core.safeTapByID('Ignore'):
+            #     continue
+            core.safeTapByClass('XCUIElementTypeButton')
+            core.safeTapByID('OK')
             core.safeTapByID('X')
             core.safeTapByID('show space list')
             core.safeTapByID('Cancel')
             core.safeTapByID('Done')
             core.safeTapByID('Ignore')
-            core.safeTapByClass('XCUIElementTypeButton')
+            core.safeTapByID('Dismiss')
+            core.safeTapByID('Close')
             navBar = core.safeGetByClass('XCUIElementTypeNavigationBar')
             try:
                 if navBar.get_attribute('name') == 'My home':
                     core.silenceLog = False
                     core.logEvent('Done backing all the way out.')
-                    break
+                    core.shortWaiting()
+                    success = True
+                    return True
             except:
-                return False
-        core.shortWaiting()
-        return True
+                one = 1
+
+        return success
 
     def goToOOBE(self):
         core.logEvent('Going to OOBE now through Settings.')
@@ -174,15 +194,18 @@ class Library:
 
     def checkIfAtDataOptIn(self):
         core.silenceLog = True
-        el = core.safeGetByID('header_dataoptin')
-        if el.get_attribute('value') == 'Data Opt-in':
+        try:
+            el = core.safeGetByID('header_dataoptin')
+            if el.get_attribute('value') == 'Data Opt-in':
+                core.silenceLog = False
+                return True
+            if el.get_attribute('label') == 'Data Opt-in':
+                core.silenceLog = False
+                return True
             core.silenceLog = False
-            return True
-        if el.get_attribute('label') == 'Data Opt-in':
+        except:
             core.silenceLog = False
-            return True
-        core.silenceLog = False
-        return False
+            return False
 
     def doOOBE(self, options):
         core.logOptions(options)
@@ -195,7 +218,7 @@ class Library:
             self.checkOOBEHelp()
 
         if not self.connectToLWM():
-            core.logEvent('LWM is being a piece of shit. It wont connect with us. Giving up!')
+            core.logEvent("LWM won't connect with us.")
             return False
 
         while not self.checkIfOnWiFi():
@@ -285,7 +308,7 @@ class Library:
 
             if core.findByID('header_pressbutton', True):
                 core.logEvent('We have not connected to LWM yet. Trying to tap again.')
-                core.usbSerial.write('\x03')
+                core.usbSerial.write('\x03'.encode('utf-8'))
                 time.sleep(2)
                 continue
 
@@ -403,7 +426,6 @@ class Library:
             core.failureReason = 'Test failed because of a native iOS modal alert.'
             return True
 
-
     def finishOOBE(self):
         try:
             core.driver.find_element_by_accessibility_id('header_done')
@@ -418,7 +440,7 @@ class Library:
     def wipeAndReboot(self):
         self.swapMessagesLogging(False)
 
-        core.usbSerial.write('\x03')
+        core.usbSerial.write('\x03'.encode('utf-8'))
         core.logEvent('Wiping and rebooting the device now.')
         core.usbSerial.write('\nrm -r /var/appdata/*\n'.encode('utf-8'))
         core.usbSerial.write('\nreboot\n'.encode('utf-8'))
@@ -433,10 +455,12 @@ class Library:
         core.safeTapByID('Done')
         time.sleep(1)
 
-        self.backAllTheWayOut()
+        if not core.safeTapByID('X'):
+            self.backAllTheWayOut()
+
         start = time.time()
 
-        # Sleep and keep Appium alive for 60 seconds
+        # Sleep and keep Appium alive for some seconds
         core.veryShortWaiting()
         while time.time() < start + 40:
             if time.time() % 10 == 0:
@@ -446,7 +470,6 @@ class Library:
 
         core.shortWaiting()
         self.swapMessagesLogging(True)
-
 
     def wipeGlobalMeshSettings(self):
         core.logEvent('Resetting Global Mesh Settings now.')
@@ -491,17 +514,19 @@ class Library:
     def swapMessagesLogging(self, enabled):
         if enabled == True:
             self.messages = True
-            core.usbSerial.write('\x03')
+            core.usbSerial.write('\x03'.encode('utf-8'))
             core.usbSerial.write('\ntail -f /var/log/messages\n'.encode('utf-8'))
             time.sleep(1)
         if enabled == False:
             self.messages = False
-            core.usbSerial.write('\x03')
-            core.usbSerial.write('\x03')
+            core.usbSerial.write('\x03'.encode('utf-8'))
+            core.usbSerial.write('\x03'.encode('utf-8'))
             time.sleep(1)
 
-
-    def readSerial(self):
+    @asyncio.coroutine
+    def readSerial(self, loop):
         while True:
+            core.logEvent('readSerial is going.')
             if self.messages:
                 core.readSerial()
+            yield

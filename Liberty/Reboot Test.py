@@ -10,7 +10,8 @@ if __name__ == '__main__':
 
     #t = time.strftime("%m\%d %H-%M-%S", time.localtime())
 
-    fileName = "LWM Reboot Test Log.txt"
+    #  Change to your target directory. Use t above to label it with the date/time.
+    fileName = "/Users/david/Automation/Results/LWM Reboot Test Log.txt"
 
     logFile = open(fileName,'w')
     logFile.close()
